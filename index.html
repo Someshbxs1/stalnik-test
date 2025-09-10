@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stalnet Chat</title>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+  <style>
+    :root {
+      --primary: #0d47a1;
+      --primary-light: #1976d2;
+      --accent: #64b5f6;
+      --bg: #f9f9fb;
+      --card: #ffffff;
+      --text: #212121;
+      --muted: #757575;
+      --mine: #1976d2;
+      --mine-text: #ffffff;
+      --theirs: #eaeaea;
+      --theirs-text: #212121;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', sans-serif; background: var(--bg); display:flex; flex-direction:column; height:100vh; }
+    header { background: var(--primary); color:white; padding:14px; text-align:center; font-size:1.2em; font-weight:600; box-shadow:0 2px 6px rgba(0,0,0,0.1); }
+    
+    /* Auth area */
+    #auth-area { flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; padding:20px; }
+    #auth-area h3 { margin-bottom:16px; color:var(--primary); }
+    input { padding:12px; margin:6px 0; border:1px solid #ccc; border-radius:8px; width:240px; font-size:1em; }
+    #auth-area button { margin-top:10px; width:240px; padding:12px; border:none; border-radius:8px; font-size:1em; background:var(--primary); color:white; font-weight:500; cursor:pointer; transition:0.2s; }
+    #auth-area button:hover { background:var(--primary-light); }
+    #authMsg { margin-top:10px; font-size:0.9em; }
+    
+    /* Chat area */
+    #chat-box { flex:1; padding:14px; overflow-y:auto; display:none; flex-direction:column; background:var(--bg); }
+    .message { padding:10px 14px; margin:6px 0; border-radius:14px; max-width:75%; word-wrap:break-word; box-shadow:0 1px 3px rgba(0,0,0,0.05); }
+    .mine { background:var(--mine); color:var(--mine-text); align-self:flex-end; border-bottom-right-radius:4px; }
+    .theirs { background:var(--theirs); color:var(--theirs-text); align-self:flex-start; border-bottom-left-radius:4px; }
+    .timestamp { font-size:0.75em; color:var(--muted); margin-top:4px; display:block; }
+    
+    /* Input area */
+    #input-area { display:none; padding:10px; background:var(--card); border-top:1px solid #ddd; display:flex; align-items:center; gap:8px; }
+    #msgInput { flex:1; padding:12px; border:1px solid #ccc; border-radius:20px; font-size:1em; outline:none; }
+    #input-area button { padding:0 20px; border:none; background:var(--primary); color:white; border-radius:20px; font-size:1.2em; cursor:pointer; transition:0.2s; }
+    #input-area button:hover { background:var(--primary-light); }
+    
+    /* Scrollbar */
+    ::-webkit-scrollbar { width:6px; }
+    ::-webkit-scrollbar-thumb { background: #ccc; border-radius:3px; }
+  </style>
+</head>
+<body>
+  <header>📟 Stalnet Chat</header>
+
+  <!-- Auth area -->
+  <div id="auth-area">
+    <h3>Welcome to Stalnet</h3>
+    <input id="username" type="text" placeholder="Username" />
+    <input id="password" type="password" placeholder="Password" />
+    <button onclick="signIn()">Sign In</button>
+    <button style="background:var(--accent); color:#fff;" onclick="signUp()">Sign Up</button>
+    <p id="authMsg" style="color:red;"></p>
+  </div>
+
+  <!-- Chat area -->
+  <div id="chat-box"></div>
+
+  <div id="input-area">
+    <input id="msgInput" type="text" placeholder="Type your message..." />
+    <button onclick="sendMessage()">➤</button>
+  </div>
+
+  <script>
+    // ✅ Firebase config
+    var firebaseConfig = {
+      apiKey: "AIzaSyBTeLzu9OUmW5_56JE-0UUaZntswookboM",
+      authDomain: "stalnet-8bfff.firebaseapp.com",
+      databaseURL: "https://stalnet-8bfff-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "stalnet-8bfff",
+      storageBucket: "stalnet-8bfff.appspot.com",
+      messagingSenderId: "1000837101104",
+      appId: "1:1000837101104:web:eef81b331db2548b505ff5"
+    };
+    firebase.initializeApp(firebaseConfig);
+    var db = firebase.database();
+
+    var chatBox = document.getElementById("chat-box");
+    var input = document.getElementById("msgInput");
+    var authArea = document.getElementById("auth-area");
+    var inputArea = document.getElementById("input-area");
+    var authMsg = document.getElementById("authMsg");
+    var currentUser = null;
+
+    function signUp() {
+      var user = document.getElementById("username").value.trim();
+      var pass = document.getElementById("password").value.trim();
+      if (!user || !pass) return authMsg.textContent = "Fill both fields!";
+      db.ref("users/" + user).once("value", function(snapshot) {
+        if (snapshot.exists()) {
+          authMsg.textContent = "⚠ Username already exists!";
+        } else {
+          db.ref("users/" + user).set({ password: pass });
+          authMsg.style.color="green";
+          authMsg.textContent = "✅ Account created. Please sign in.";
+        }
+      });
+    }
+
+    function signIn() {
+      var user = document.getElementById("username").value.trim();
+      var pass = document.getElementById("password").value.trim();
+      if (!user || !pass) return authMsg.textContent = "Fill both fields!";
+      db.ref("users/" + user).once("value", function(snapshot) {
+        if (snapshot.exists() && snapshot.val().password === pass) {
+          currentUser = user;
+          authArea.style.display = "none";
+          chatBox.style.display = "flex";
+          inputArea.style.display = "flex";
+          loadMessages();
+        } else {
+          authMsg.textContent = "❌ Invalid credentials!";
+        }
+      });
+    }
+
+    function sendMessage() {
+      var text = input.value.trim();
+      if (text === "") return;
+      db.ref("chatMessages").push({
+        user: currentUser,
+        text: text,
+        timestamp: Date.now()
+      });
+      input.value = "";
+    }
+
+    function loadMessages() {
+      db.ref("chatMessages").on("child_added", function(snapshot) {
+        var data = snapshot.val();
+        var msgDiv = document.createElement("div");
+        msgDiv.className = "message " + (data.user === currentUser ? "mine" : "theirs");
+        msgDiv.innerHTML = "<strong>" + data.user + ":</strong> " + 
+          data.text + "<span class='timestamp'>" + 
+          new Date(data.timestamp).toLocaleTimeString() + "</span>";
+        chatBox.appendChild(msgDiv);
+        chatBox.scrollTop = chatBox.scrollHeight;
+      });
+    }
+
+    input.addEventListener("keypress", function(e) {
+      if (e.key === "Enter") sendMessage();
+    });
+  </script>
+</body>
+</html>
